@@ -1,0 +1,122 @@
+#!/usr/bin/lua
+require("uci")
+
+function lan_ip()
+
+	local x = uci.cursor();
+
+	return  x:get("network", "lan", "ipaddr");
+end
+
+
+function lan_ip_head(ip)
+	local i = 1;
+	local iparr = {};
+	for item in string.gmatch(ip, "%d+") do
+		iparr[i] = item;
+		i = i + 1;
+	end
+	return iparr[1].."."..iparr[2].."."..iparr[3].."."
+end
+
+localip = lan_ip_head(lan_ip())
+
+function regex_line(line)
+	local plen,psrcip,pdstip = string.match(line,"[a-f0-9:]+ > [a-f0-9:]+, IPv4, length (%d+): (%d+%.%d+%.%d+%.%d+)[%.%d]- > (%d+%.%d+%.%d+%.%d+)[%.%d]-:")
+	return tonumber(plen),psrcip,pdstip
+end
+
+function islocalip(ip)
+	return string.sub(ip, 1, string.len(localip)) == localip	
+end
+
+function init_table(bw,ip)
+	bw[ip] = {};                        
+        bw[ip]["out"] = {};                 
+        bw[ip]["in"] = {};                  
+        bw[ip]["out_total"] = 0;            
+        bw[ip]["in_total"] = 0;
+end
+
+function parse_dump()
+	local bw = {};
+	local f = io.open("/tmp/bwmon.done","r");
+	while true do
+		local line = f:read();
+		if line == nil then break end
+		plen,psrcip,pdstip = regex_line(line);
+		if plen ~= nil then
+			if islocalip(psrcip) then
+				if bw[psrcip] == nil then
+					init_table(bw, psrcip);
+				end
+				
+				grand_total = bw[psrcip]["out_total"];
+				sub_total = bw[psrcip]["out"][pdstip];
+				
+				if sub_total == nil then sub_total = 0 end
+				
+				grand_total = grand_total + plen;
+				sub_total = sub_total + plen;
+				
+				bw[psrcip]["out_total"] = grand_total;
+				bw[psrcip]["out"][pdstip] = sub_total;
+			else
+				if islocalip(pdstip) then
+					if bw[pdstip] == nil then
+						init_table(bw, pdstip);
+					end
+					
+					grand_total = bw[pdstip]["in_total"];
+					sub_total = bw[pdstip]["in"][psrcip];
+					
+					if sub_total == nil then sub_total = 0 end
+					
+					grand_total = grand_total + plen;
+					sub_total = sub_total + plen;
+					
+					bw[pdstip]["in_total"] = grand_total;
+					bw[pdstip]["in"][psrcip] = sub_total;
+				else
+
+				end
+			end
+		end
+	end
+	f:close();
+	return bw;
+end
+
+function toJson(bw)
+	local rstr="[ \n"
+	for ip,tr in pairs(bw) do
+		rstr = rstr .. "{\n"
+		
+		rstr = rstr .. string.format("\"ip\":\"%s\",\n", ip)
+		rstr = rstr .. string.format("\"outbound_total\":%d,\n", tr["out_total"])
+		rstr = rstr .. string.format("\"inbound_total\":%d,\n", tr["in_total"])
+		
+		rstr = rstr .. "\"outbound\":[ \n"
+		for oip,obw in pairs(tr["out"]) do
+			rstr = rstr .. string.format("{\"ip\":\"%s\",\"traffic\":%d},\n", oip, obw)
+		end
+		rstr = rstr:sub(1,-3);
+		rstr = rstr .. "\n],\n"
+
+		rstr = rstr .. "\"inbound\":[ \n"
+		for iip,ibw in pairs(tr["in"]) do
+			rstr = rstr .. string.format("{\"ip\":\"%s\",\"traffic\":%d},\n", iip, ibw)
+		end
+		rstr = rstr:sub(1,-3);
+		rstr = rstr .. "\n]\n"
+		
+		rstr = rstr .. "},\n"
+	end
+	rstr = rstr:sub(1, -3);
+	rstr = rstr .. "\n]";
+	print(rstr)
+end
+os.execute("/bin/sh /www/cgi-bin/dumplan.sh 5")
+parse_result = parse_dump();
+print("\"content-type\":\"application/json\"\n\n")
+toJson(parse_result);
