@@ -1,0 +1,59 @@
+<html>
+    <head>
+        <title>
+            RealTime Bandwidth Monitor with tcpdump
+        </title>
+        <script type="text/javascript" src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+        <script type="text/javascript">
+            function refresh(){
+                $.ajax({
+                    url: "cgi-bin/ipbw",
+                    success:function(data){
+                        var d=$.parseJSON(data);
+                        $("#tb").empty();
+                        $.each(d,function(index,item){
+                            $("#tb").append("<tr><td>"+item.ip+"</td><td>"+item.inbound_total/5000+"</td><td>"+item.outbound_total/5000+"</td></tr>");
+                        });
+                    }
+                });
+            }
+            
+            $(document).ready(function(){
+                refresh();
+
+                $("#btn").click(function(){
+                    refresh();
+                });
+            });
+        </script>
+    </head>
+
+    <body>
+        <div>
+            <p>Inbound Speed:</p>
+            <p id="inbound_t"></p>
+            <p>Outbound Speed:</p>
+            <p id="outbound_t"></p>
+            <button id="btn">Refresh</button>
+        </div>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>
+                        IP
+                    </th>
+                    <th>
+                        Inbound Traffic
+                    </th>
+                    <th>
+                        OutBound Traffic
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="tb">
+
+            </tbody>
+        </table>
+
+    </body>
+</html>
